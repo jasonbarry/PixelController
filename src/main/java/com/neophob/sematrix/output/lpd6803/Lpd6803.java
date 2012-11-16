@@ -42,6 +42,7 @@ Boston, MA  02111-1307  USA
 
 package com.neophob.sematrix.output.lpd6803;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,7 +98,7 @@ public class Lpd6803 {
 	private static final byte END_OF_DATA = 0x20;
 
 	//how many attemps are made to get the data
-	private static final int TIMEOUT_LOOP = 80;
+	private static final int TIMEOUT_LOOP = 4*80;
 	
 	//wait TIMEOUT_SLEEP ms, until next loop
 	private static final int TIMEOUT_SLEEP = 4;
@@ -107,6 +108,10 @@ public class Lpd6803 {
 
 	/** The baud. */
 	private int baud = 115200;
+	
+	private List<String> portBlacklist;
+	
+	private String portName;
 	
 	/** The port. */
 	private Serial port;
@@ -180,47 +185,61 @@ public class Lpd6803 {
 		this.app = app;
 		app.registerDispose(this);
 		
-		lastDataMap = new HashMap<Byte, String>();
+		this.portBlacklist = portBlacklist; 
+		this.portName = portName;
 		
-		String serialPortName="";
-		if(baud > 0) {
+		lastDataMap = new HashMap<Byte, String>();
+				
+		if (baud > 0) {
 			this.baud = baud;
 		}
 		
-		if (portName!=null && !portName.trim().isEmpty()) {
-			//open specific port
-			LOG.log(Level.INFO,	"open port: {0}", portName);
-			serialPortName = portName;
-			openPort(portName);
-		} else {
-			//try to find the port
-			String[] ports = Serial.list();
-						
-			for (int i=0; port==null && i<ports.length; i++) {
-		         //check blacklist
-	            if (portBlacklist!=null && portBlacklist.contains(ports[i])) {
-	                LOG.log(Level.INFO, "ignore blacklist port: {0}", ports[i]);
-	                continue;
-	            }
-
-				LOG.log(Level.INFO,	"open port: {0}", ports[i]);
-				try {
-					serialPortName = ports[i];
-					openPort(ports[i]);
-				//catch all, there are multiple exception to catch (NoSerialPortFoundException, PortInUseException...)
-				} catch (Exception e) {
-					// search next port...
-				}
-			}
-		}
-				
-		if (port==null) {
-			throw new NoSerialPortFoundException("Error: no serial port found!");
-		}
+		String serialPortName=initSerialPort();
 		
 		LOG.log(Level.INFO,	"found serial port: "+serialPortName);
 	}
 
+	/**
+	 * 
+	 * @return
+	 * @throws NoSerialPortFoundException
+	 */
+	private String initSerialPort() throws NoSerialPortFoundException {
+	    String serialPortName="";
+	    
+        if (portName!=null && !portName.trim().isEmpty()) {
+            //open specific port
+            LOG.log(Level.INFO, "open port: {0}", portName);
+            serialPortName = portName;
+            openPort(portName);
+        } else {
+            //try to find the port
+            String[] ports = Serial.list();
+                        
+            for (int i=0; port==null && i<ports.length; i++) {
+                 //check blacklist
+                if (portBlacklist!=null && portBlacklist.contains(ports[i])) {
+                    LOG.log(Level.INFO, "ignore blacklist port: {0}", ports[i]);
+                    continue;
+                }
+
+                LOG.log(Level.INFO, "open port: {0}", ports[i]);
+                try {
+                    serialPortName = ports[i];
+                    openPort(ports[i]);
+                //catch all, there are multiple exception to catch (NoSerialPortFoundException, PortInUseException...)
+                } catch (Exception e) {
+                    // search next port...
+                }
+            }
+        }
+                
+        if (port==null) {
+            throw new NoSerialPortFoundException("Error: no serial port found!");
+        }
+	    
+        return serialPortName;
+	}
 
 	/**
 	 * clean up library.
@@ -532,23 +551,50 @@ public class Lpd6803 {
 	 * @throws SerialPortException the serial port exception
 	 */
 	private synchronized void writeSerialData(byte[] cmdfull) throws SerialPortException {
+	    //try to reconnect
+        if (connectionErrorCounter > 25) {
+            LOG.log(Level.INFO, "rescan serial port...");
+            connectionErrorCounter = 0;
+            try {
+                this.dispose();
+                port = null;
+                this.initSerialPort();
+            } catch (Exception closeException) {         
+                LOG.log(Level.INFO, "failed to close serial port!", closeException);
+            }
+        }
+
+        
 		//TODO handle the 128 byte buffer limit!
 		if (port==null) {
-			throw new SerialPortException("port is not ready!");
-		}
-		
+		    connectionErrorCounter++;
+			throw new SerialPortException("Port is not ready! Errorcounter: "+connectionErrorCounter);
+		}		
+        
+		boolean throwException = false;
+		Exception ex=null;
 		//log.log(Level.INFO, "Serial Wire Size: {0}", cmdfull.length);
 
 		try {
 			port.output.write(cmdfull);
+			connectionErrorCounter = 0;
 			//port.output.flush();
 			//DO NOT flush the buffer... hmm not sure about this, processing flush also
 			//and i discovered strange "hangs"...
-		} catch (Exception e) {
+		} catch (IOException e) {
+		    LOG.log(Level.INFO, "IO Error sending serial data!", e);
+		    ex = e;
+		    throwException = true;
+            connectionErrorCounter++;            		    
+		} catch (Exception e) {		    
+            ex = e;
+            throwException = true;
 			LOG.log(Level.INFO, "Error sending serial data!", e);
-			connectionErrorCounter++;
-			throw new SerialPortException("cannot send serial data, errorNr: "+connectionErrorCounter+", Error: "+e);
 		}		
+				
+		if (throwException) { 
+		    throw new SerialPortException("cannot send serial data, errorNr: "+connectionErrorCounter+", Error: "+ex);
+		}
 	}
 	
 	
