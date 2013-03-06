@@ -6,7 +6,9 @@
 // of Adafruit-WS2801-Library and FastSPI Library 
 /*********************************************************************************/
 //select if you use a teensy 3
-#define PIXELINVADERS_USE_TEENSY_3
+#ifdef __MK20DX128__
+  #define PIXELINVADERS_USE_TEENSY_3
+#endif
 
 #ifdef PIXELINVADERS_USE_TEENSY_3
   #include <IntervalTimer.h>  

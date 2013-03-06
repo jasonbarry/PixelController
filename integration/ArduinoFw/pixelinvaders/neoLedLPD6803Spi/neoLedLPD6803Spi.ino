@@ -39,9 +39,6 @@
 //define nr of Panels*2 here, 4 means 2 panels
 #define NR_OF_PANELS 4
 
-//enable the following line if you use a teensy 3
-#define PIXELINVADERS_USE_TEENSY_3 
-
 // ======= END OF USER CONFIGURATION ======= 
 
 #define PIXELS_PER_PANEL 32
@@ -50,13 +47,17 @@
 //NOT the bottleneck. 
 #define BAUD_RATE 115200
 
+//try to detect the teensy 3
+#ifdef __MK20DX128__
+  #define PIXELINVADERS_USE_TEENSY_3
+#endif
+
 #ifdef PIXELINVADERS_USE_TEENSY_3
   //#debug "compile for teesy3"
   #include <IntervalTimer.h>
 #else
   //#debug "compile for arduino compatible avr boards"
   #include <TimerOne.h>
-  xxx
 #endif 
 
 #include <SPI.h>
