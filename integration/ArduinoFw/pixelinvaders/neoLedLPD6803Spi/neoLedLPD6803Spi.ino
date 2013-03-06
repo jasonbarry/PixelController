@@ -32,15 +32,15 @@
  */
 
 //the lpd6803 library needs the timer1 library
-#include <TimerOne.h>
-#include <SPI.h>
-#include <Neophob_LPD6803.h>
-//#include <LPD6803.h>
+
 
 // ======= START OF USER CONFIGURATION =======
  
 //define nr of Panels*2 here, 4 means 2 panels
 #define NR_OF_PANELS 4
+
+//enable the following line if you use a teensy 3
+#define PIXELINVADERS_USE_TEENSY_3 
 
 // ======= END OF USER CONFIGURATION ======= 
 
@@ -49,6 +49,18 @@
 //to draw a frame we need arround 20ms to send an image. the serial baudrate is
 //NOT the bottleneck. 
 #define BAUD_RATE 115200
+
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  //#debug "compile for teesy3"
+  #include <IntervalTimer.h>
+#else
+  //#debug "compile for arduino compatible avr boards"
+  #include <TimerOne.h>
+  xxx
+#endif 
+
+#include <SPI.h>
+#include <Neophob_LPD6803.h>
 
 //--- protocol data start
 #define CMD_START_BYTE 0x01
@@ -74,8 +86,7 @@
 byte serInStr[COLOR_5BIT_FRAME_SIZE+SERIAL_HEADER_SIZE]; 	 				 
 
 //initialize pixels
-Neophob_LPD6803 strip = Neophob_LPD6803(64);
-//LPD6803 strip = LPD6803(64,11,13);
+Neophob_LPD6803 strip = Neophob_LPD6803(NR_OF_PANELS*PIXELS_PER_PANEL);
 
 #define SERIALBUFFERSIZE 4
 byte serialResonse[SERIALBUFFERSIZE];
@@ -195,66 +206,6 @@ void setup() {
   serialDataRecv = 0;   //no serial data received yet  
 }
 
-// --------------------------------------------
-//      main loop
-// --------------------------------------------
-void loop() {
-  g_errorCounter=0;
-
-  // see if we got a proper command string yet
-  if (readCommand(serInStr) == 0) {
-    //nope, nothing arrived yet...
-    if (g_errorCounter!=0 && g_errorCounter!=102) {
-      sendAck();
-    }
-
-    if (serialDataRecv==0) { //if no serial data arrived yet, show the rainbow...
-      rainbow();	
-    }
-    return;
-  }
-
-  //led offset
-  byte ofs    = serInStr[1];
-  //how many bytes we're sending
-  byte sendlen = serInStr[2];
-  //what kind of command we send
-  byte type = serInStr[3];
-  //get the image data
-  byte* cmd    = serInStr+5;
-
-  switch (type) {
-  case CMD_SENDFRAME:
-    //the size of an image must be exactly 64bytes for 8*4 pixels
-    if (sendlen == COLOR_5BIT_FRAME_SIZE) {
-      updatePixels(ofs, cmd);
-    } 
-    else {
-      g_errorCounter=100;
-    }
-    break;
-
-  case CMD_PING:
-    //just send the ack!
-    serialDataRecv = 1;        
-    break;
-
-  case CMD_CONNECTION_CLOSED:
-    //pixelcontroller just stopped, display the rainbow!
-    serialDataRecv = 0;
-    Serial.flush();
-    rainbow();
-    return;
-
-  default:
-    //invalid command
-    g_errorCounter=130; 
-    break;
-  }
-
-  //send ack to library - command processed
-  sendAck();
-}
 
 // --------------------------------------------
 //    update 32 bytes of the led matrix
@@ -265,8 +216,6 @@ void updatePixels(uint8_t ofs, byte* buffer) {
   currentLed *= ofs;
   byte x=0;
   for (byte i=0; i < PIXELS_PER_PANEL; i++) {
-//    uint16_t c = buffer[x]<<8 | buffer[x+1];
-//    strip.setPixelColor(currentLed++, c);
     strip.setPixelColor(currentLed++, buffer[x]<<8 | buffer[x+1]);
     x+=2;
   }  
@@ -379,4 +328,65 @@ byte readCommand(byte *str) {
   return sendlen;
 }
 
+
+// --------------------------------------------
+//      main loop
+// --------------------------------------------
+void loop() {
+  g_errorCounter=0;
+
+  // see if we got a proper command string yet
+  if (readCommand(serInStr) == 0) {
+    //nope, nothing arrived yet...
+    if (g_errorCounter!=0 && g_errorCounter!=102) {
+      sendAck();
+    }
+
+    if (serialDataRecv==0) { //if no serial data arrived yet, show the rainbow...
+      rainbow();	
+    }
+    return;
+  }
+
+  //led offset
+  byte ofs    = serInStr[1];
+  //how many bytes we're sending
+  byte sendlen = serInStr[2];
+  //what kind of command we send
+  byte type = serInStr[3];
+  //get the image data
+  byte* cmd    = serInStr+5;
+
+  switch (type) {
+  case CMD_SENDFRAME:
+    //the size of an image must be exactly 64bytes for 8*4 pixels
+    if (sendlen == COLOR_5BIT_FRAME_SIZE) {
+      updatePixels(ofs, cmd);
+    } 
+    else {
+      g_errorCounter=100;
+    }
+    break;
+
+  case CMD_PING:
+    //just send the ack!
+    serialDataRecv = 1;        
+    break;
+
+  case CMD_CONNECTION_CLOSED:
+    //pixelcontroller just stopped, display the rainbow!
+    serialDataRecv = 0;
+    Serial.flush();
+    rainbow();
+    return;
+
+  default:
+    //invalid command
+    g_errorCounter=130; 
+    break;
+  }
+
+  //send ack to library - command processed
+  sendAck();
+}
 

@@ -5,7 +5,6 @@
  #include <pins_arduino.h>
 #endif
 
-
 class Neophob_LPD6803 {
 
  public:

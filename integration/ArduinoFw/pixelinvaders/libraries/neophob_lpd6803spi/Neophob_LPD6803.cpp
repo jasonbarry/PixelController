@@ -5,8 +5,15 @@
 // This Library is bsed on work 
 // of Adafruit-WS2801-Library and FastSPI Library 
 /*********************************************************************************/
+//select if you use a teensy 3
+#define PIXELINVADERS_USE_TEENSY_3
 
-#include <TimerOne.h>
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  #include <IntervalTimer.h>  
+#else
+  #include <TimerOne.h>  
+#endif
+
 #include "SPI.h"
 #include "Neophob_LPD6803.h"
 
@@ -17,6 +24,10 @@
 #define SPI_WAIT_TILL_TRANSMITED while(!(SPSR & _BV(SPIF)))
 //#define SPI_WAIT_TILL_TRANSMITED while(!(SPSR & (1<<SPIF)))
 
+#ifdef PIXELINVADERS_USE_TEENSY_3
+IntervalTimer timer0;
+long isrSpeed;
+#endif
 
 //some local variables, ised in isr
 static uint8_t *pixelData; //pointer to pixel buffer, we cannot access pixels form isr!
@@ -47,12 +58,20 @@ static void isr2() {
 // Activate hard/soft SPI as appropriate:
 void Neophob_LPD6803::begin(uint8_t divider) {
   startSPI(divider);
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  timer0.begin(isr2, isrSpeed);
+#else
   Timer1.attachInterrupt(isr2);
+#endif    
 }
 
 //call the clock shift out function each isrCallInMicroSec us
-void Neophob_LPD6803::setCPU(long isrCallInMicroSec) {
+void Neophob_LPD6803::setCPU(long isrCallInMicroSec) {  
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  isrSpeed = isrCallInMicroSec;
+#else
   Timer1.initialize(isrCallInMicroSec);
+#endif    
 }
 
 // Enable SPI hardware and set up protocol details:
@@ -85,7 +104,12 @@ void Neophob_LPD6803::show(void) {
   unsigned int i;
   nState = 0;
 
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  timer0.disable_PIT();
+#else
   Timer1.stop();
+#endif   
+  
   //header - omitted as the isr routing sends plenty of 0's
 //  for (i=0; i<4; i++) {
 //    SPI_WAIT_TILL_TRANSMITED;
@@ -107,7 +131,12 @@ void Neophob_LPD6803::show(void) {
 //    SPI_LOAD_BYTE(0);
 //  }
   
+#ifdef PIXELINVADERS_USE_TEENSY_3
+  timer0.enable_PIT();
+#else
   Timer1.resume();
+#endif     
+  
   nState = 1;
 }
 
